@@ -32,7 +32,7 @@ class _LoanPageState extends State<LoanPage> {
   String repaymentDelay = "30 days";
   String fundUsage = "";
   final TextEditingController _controller = TextEditingController();
-  double revenue_share_percent = 0;
+  double revenue_share_percent = 0.0;
   double revenueShare = 250000;
   int expectedTransfers = 0;
   int finalExpectedTransfers = 0;
@@ -47,12 +47,15 @@ class _LoanPageState extends State<LoanPage> {
   String fundAmount = "";
   int count = 0;
   List<int> data = [];
+  double maxFundAmt = 250000;
+  var feespercnt = 0.0;
+  var expectedAPR = 0.0;
+  double funding_amount_max99 = 0;
 
   @override
   void initState() {
     super.initState();
     fetchConfig();
-    calculateResults();
   }
 
   Future<void> fetchConfig() async {
@@ -70,6 +73,9 @@ class _LoanPageState extends State<LoanPage> {
         fundUsage = fund_usage_categories[0];
         repaymentDelay = repayment_delay_options[0];
         repaymentFrequency = '${financingOptionsData[5]['value']}'.split("*");
+
+        feespercnt = double.parse('${financingOptionsData[0]['value']}');
+        calculateResults();
       });
     } else {
       throw Exception('Failed to load configuration');
@@ -79,28 +85,45 @@ class _LoanPageState extends State<LoanPage> {
   void calculateResults() {
     setState(() {
       DateTime currentDate = DateTime.now();
+      int revenue_percentage_min =
+          int.parse('${financingOptionsData[9]['value']}');
+      int revenue_percentage_max =
+          int.parse('${financingOptionsData[10]['value']}');
+      double funding_amount_max =
+          double.parse('${financingOptionsData[7]['value']}') / 3;
+      if (funding_amount_max >= (annualRevenue / 3)) {
+        funding_amount_max99 = (annualRevenue / 3);
+      } else {
+        funding_amount_max99 = funding_amount_max;
+      }
       revenue_share_percent =
           (0.156 / 6.2055 / annualRevenue) * (loanAmount * 10);
       if (selectedOption == 1) {
-        finalExpectedTransfers = (((loanAmount + (loanAmount / 2)) * 12) /
-                (annualRevenue * revenue_share_percent))
-            .ceil();
+        finalExpectedTransfers =
+            (((loanAmount + (loanAmount * feespercnt)) * 12) /
+                    (annualRevenue * revenue_share_percent))
+                .ceil();
         expectedCompletion = DateTime(
           currentDate.year,
           currentDate.month + finalExpectedTransfers,
           currentDate.day,
         );
       } else {
-        finalExpectedTransfers = (((loanAmount + (loanAmount / 2)) * 52) /
-                (annualRevenue * revenue_share_percent))
-            .ceil();
+        finalExpectedTransfers =
+            (((loanAmount + (loanAmount * feespercnt)) * 52) /
+                    (annualRevenue * revenue_share_percent))
+                .ceil();
         expectedCompletion =
             currentDate.add(Duration(days: finalExpectedTransfers * 7));
       }
       RegExp regExp = RegExp(r'\d+');
-      String? match = regExp.stringMatch(repaymentDelay!)!;
+      String? match = regExp.stringMatch(repaymentDelay)!;
       int daysDelay = int.parse(match);
       finalDate = expectedCompletion.add(Duration(days: daysDelay));
+      var loanDays = ((finalDate.difference(currentDate).inHours) / 24).round();
+      var desiredFeesPercent =
+          double.parse('${financingOptionsData[0]['value']}');
+      expectedAPR = (desiredFeesPercent / loanDays) * 36500;
     });
   }
 
@@ -196,15 +219,21 @@ class _LoanPageState extends State<LoanPage> {
                                     decoration: InputDecoration(
                                       border: OutlineInputBorder(),
                                     ),
-                                    onSubmitted: (value) {
+                                    onChanged: (value) {
                                       final amount = double.tryParse(value);
-                                      if (amount != null && amount > 60000) {
-                                        setState(() {
+
+                                      setState(() {
+                                        if (amount != null && amount > 50000) {
                                           revenueShare =
                                               double.tryParse(value) ?? 0;
                                           annualRevenue = revenueShare;
-                                        });
-                                      }
+                                          maxFundAmt = revenueShare;
+                                        } else {
+                                          annualRevenue = 150000;
+                                          maxFundAmt = 150000;
+                                          loanAmount = 50000;
+                                        }
+                                      });
                                     },
                                   ),
                                   SizedBox(height: 20),
@@ -218,12 +247,12 @@ class _LoanPageState extends State<LoanPage> {
                                         Text('\$50,000',
                                             style: TextStyle(fontSize: 17)),
                                         Text(
-                                            '\$${(annualRevenue / 3).toStringAsFixed(0)}',
+                                            '\$${(maxFundAmt / 3).toStringAsFixed(0)}',
                                             style: TextStyle(fontSize: 17))
                                       ]),
                                   Slider(
                                     min: 50000,
-                                    max: annualRevenue / 3,
+                                    max: maxFundAmt / 3,
                                     value: loanAmount,
                                     label: loanAmount.round().toString(),
                                     onChanged: (value) {
@@ -452,12 +481,41 @@ class _LoanPageState extends State<LoanPage> {
                                             fontSize: 20,
                                             fontWeight: FontWeight.bold)),
                                     Text(
-                                        '(50%) \$${(loanAmount / 2).toStringAsFixed(0)}',
+                                        '(${(feespercnt * 100).toString()}%) \$${(loanAmount * feespercnt).toStringAsFixed(0)}',
                                         style: TextStyle(
                                             fontSize: 20,
                                             fontWeight: FontWeight.bold)),
                                   ]),
                               SizedBox(height: 20),
+                              Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('Expected APR  ',
+                                        style: TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold)),
+                                    Text('${(expectedAPR).toStringAsFixed(2)}%',
+                                        style: TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold)),
+                                  ]),
+                              SizedBox(height: 20),
+                              Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('Revenue Share Percentage ',
+                                        style: TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold)),
+                                    Text(
+                                        ' ${(revenue_share_percent * 100).toStringAsFixed(2)}%',
+                                        style: TextStyle(
+                                            fontSize: 20,
+                                            color: Colors.blue,
+                                            fontWeight: FontWeight.bold)),
+                                  ]),
                               Divider(),
                               Row(
                                   mainAxisAlignment:
@@ -468,7 +526,7 @@ class _LoanPageState extends State<LoanPage> {
                                             fontSize: 20,
                                             fontWeight: FontWeight.bold)),
                                     Text(
-                                        ' \$${(loanAmount + (loanAmount / 2)).toStringAsFixed(0)}',
+                                        ' \$${(loanAmount + (loanAmount * feespercnt)).toStringAsFixed(0)}',
                                         style: TextStyle(
                                             fontSize: 20,
                                             fontWeight: FontWeight.bold)),
